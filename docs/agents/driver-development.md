@@ -5,7 +5,7 @@ Load this guide for edits under `driver/` or for claims about the current kernel
 ## Read First
 
 1. `notes/CURRENT_STATUS.md`
-2. `driver/snd-quantum2626.c`
+2. `driver/snd-quantum.c`
 3. `notes/REGISTER_GUESSES.md` when changing MMIO behavior
 4. `driver/README.md` for the operator-facing build surface
 5. `docs/LINUX_TESTING.md` only when live testing is in scope

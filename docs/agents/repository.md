@@ -1,6 +1,6 @@
 # Repository Map And Source Precedence
 
-PreSonus Quantum Linux aims to support the full Quantum interface family over time. The current
+PreSonus Quantum Linux aims to support the full Quantum Thunderbolt Family over time. The current
 out-of-tree Linux ALSA PCI driver is enabled and hardware-tested only for the Quantum 2626, a
 Thunderbolt 3 interface exposed as PCI device `1c67:0104`.
 
@@ -12,7 +12,7 @@ authority for what is actually enabled and proven.
 
 | Path | Owns |
 | --- | --- |
-| `driver/snd-quantum2626.c` | Actual driver implementation and module parameters. |
+| `driver/snd-quantum.c` | Actual driver implementation and module parameters. |
 | `notes/CURRENT_STATUS.md` | Latest consolidated experimental status and known blockers. |
 | `notes/REGISTER_GUESSES.md` | Register hypotheses, confidence, and supporting observations. |
 | `notes/GHIDRA_FINDINGS_SUMMARY.md` | Consolidated static-analysis findings. |

@@ -1,31 +1,33 @@
-# PreSonus Quantum Linux
+# PreSonus Quantum Thunderbolt Family Linux
 
-Experimental Linux audio support for the PreSonus Quantum family. The current
-out-of-tree ALSA PCI driver targets the Quantum 2626 Thunderbolt interface
-(`1c67:0104`) and is based on static protocol recovery from the macOS DriverKit
-extension plus bounded tests on owned hardware.
-
-The long-term goal is support for the full Quantum family. That is a roadmap,
-not a claim that every model works today: the Quantum 2626 is presently the
-only enabled and hardware-tested device.
+Experimental Linux audio support for the PreSonus Quantum Thunderbolt Family
+of audio interfaces from PreSonus.
+The current out-of-tree ALSA PCI driver mainly targets
+the Quantum 2626 Thunderbolt interface (`1c67:0104`) and is based on
+static protocol recovery from the macOS DriverKit extension plus
+bounded tests on owned hardware.
 
 Project home: <https://github.com/jamie-steele/presonus-quantum-linux>
 
-## Quantum family support
+## Quantum Thunderbolt Family support
 
-Legend: ✅ confirmed on physical hardware · 🧪 experimental/in progress ·
+*Notes*:
+- The newly released Quantum HD/ES/LT interfaces are standard USB interfaces
+that are not covered by this project.
+- The Quantum Mobile (`1c67:0105`) interface is registered in the Microsoft Windows
+driver but seem to be an unreleased prototype. As far as we know, no such hardware
+as ever been seen in the wild. If you have one please let us know.
+
+Legend: ✅ confirmed on physical hardware · ❎ should work, needs hardware testing 🧪 experimental/in progress ·
 ❌ not currently supported · 🎯 planned
 
-| Model | Connection | Device support | Playback | Capture | Desktop integration | Current state |
-| --- | --- | :---: | :---: | :---: | :---: | --- |
-| Quantum 2626 | Thunderbolt 3 / PCIe | ✅ | ✅ | ✅ | ✅ | 🧪 Active development; usable, but stability and performance work continues |
-| Quantum | Thunderbolt 2 / PCIe | ❌ | ❌ | ❌ | ❌ | 🎯 Roadmap; needs model-specific hardware and protocol validation |
-| Quantum 2 | Thunderbolt 2 / PCIe | ❌ | ❌ | ❌ | ❌ | 🎯 Roadmap; static family identity only, with no Linux hardware proof yet |
-| Quantum 4848 | Thunderbolt 2 / PCIe | ❌ | ❌ | ❌ | ❌ | 🎯 Roadmap; static family identity only, with no Linux hardware proof yet |
-| Quantum ES 2 | USB-C | ❌ | ❌ | ❌ | ❌ | 🎯 Long-term roadmap; different USB transport |
-| Quantum ES 4 | USB-C | ❌ | ❌ | ❌ | ❌ | 🎯 Long-term roadmap; different USB transport |
-| Quantum HD 2 | USB-C | ❌ | ❌ | ❌ | ❌ | 🎯 Long-term roadmap; different USB transport |
-| Quantum HD 8 | USB-C | ❌ | ❌ | ❌ | ❌ | 🎯 Long-term roadmap; different USB transport |
+| Model          | Connection              | Device support | Playback | Capture | Desktop integration | Current state                                                               |
+|----------------|-------------------------|:--------------:|:--------:|:-------:|:-------------------:|-----------------------------------------------------------------------------|
+| Quantum        | Thunderbolt 2 (PCIe)    |       ❎       |    ❎    |   ❎    |         ❎          | 🧪 Active development; 🎯 needs model-specific hardware validation          |
+| Quantum 2      | Thunderbolt 2 (PCIe)    |       ✅       |    ✅    |   ✅    |         ❎          | 🧪 Active development; usable, but stability and performance work continues |
+| Quantum 4848   | Thunderbolt 2 (PCIe)    |       ✅       |    ✅    |   ✅    |         ❎          | 🧪 Active development; usable, but stability and performance work continues |
+| Quantum 2626   | Thunderbolt 3 (PCIe)    |       ✅       |    ✅    |   ✅    |         ✅          | 🧪 Active development; usable, but stability and performance work continues |
+| Quantum Mobile | (Thunderbolt 3?) (PCIe) |       ❎       |    ❌    |   ❌    |         ❌          | ❌ Unreleased hardware. Added for completeness. Unsupported!                |
 
 A green check means that capability has been observed on owned physical
 hardware. A red X means the repository does not currently support or validate
@@ -41,10 +43,10 @@ from the Thunderbolt 2 connections used by Quantum, Quantum 2, and Quantum 4848:
 ## Linux audio works
 
 > [!IMPORTANT]
-> **The Quantum 2626 is producing real audio on Linux.** The current driver
-> initializes the interface to its solid-blue ready state, plays ordinary
+> **The Quantum are producing real audio on Linux.** The current driver
+> initializes the interfaces to their solid-blue ready state, plays ordinary
 > desktop audio through PipeWire, captures real input data, and runs playback
-> and capture concurrently on physical Quantum 2626 hardware.
+> and capture concurrently on physical Quantum 2, Quantum 4848 & Quantum 2626 hardware.
 
 This is no longer a fake-pointer or register-probing proof of concept. The
 driver uses the recovered TCI mailbox, hardware DMA page tables, real audio
@@ -99,7 +101,7 @@ UCM desktop profile:
 ```bash
 cd driver
 sudo make install
-sudo modprobe snd-quantum2626
+sudo modprobe snd-quantum
 ```
 
 Module load/unload, audio-service changes, playback, capture, and hardware
@@ -121,9 +123,6 @@ establish a fresh test boundary before running them.
 
 ## Known limits
 
-- Only the Quantum 2626 PCI ID is enabled. The other models in the family
-  support matrix are roadmap targets and are not claimed or probed by this
-  driver.
 - The tracked UCM desktop profile remains fixed to the live-proven 48 kHz,
   26-channel layout. Direct ALSA/DAW use of the new native-rate source requires
   the matching full raw frame: 26 channels at 44.1/48, 18 at 88.2/96, and 8 at

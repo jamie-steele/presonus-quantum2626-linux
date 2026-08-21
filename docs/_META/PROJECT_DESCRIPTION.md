@@ -2,12 +2,13 @@
 
 ## Short Description (for GitHub About section)
 
-Experimental PreSonus Quantum family Linux support; Quantum 2626 playback, capture, and PipeWire integration are live-proven
+Experimental PreSonus Quantum Thunderbolt Family Linux support;
+Quantum 2626 playback, capture, and PipeWire integration are live-proven
 
 ## Detailed Description
 
 This repository aims to provide community-developed Linux audio support for the
-full PreSonus Quantum family. Today, its experimental Linux ALSA PCI driver is
+full PreSonus Quantum Thunderbolt Family. Today, its experimental Linux ALSA PCI driver is
 enabled and hardware-tested only for the Quantum 2626 Thunderbolt 3 interface.
 On owned hardware, the current driver reaches the solid-blue ready state and
 provides live-proven playback, capture, and bounded duplex operation through

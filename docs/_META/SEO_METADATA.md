@@ -6,10 +6,16 @@ hardware's maximum specification as implemented Linux support.
 
 ## Accurate Search Terms
 
+- PreSonus Quantum Linux
+- PreSonus Quantum 2 Linux
+- PreSonus Quantum 4848 Linux
 - PreSonus Quantum 2626 Linux
 - PreSonus Quantum Linux
 - PreSonus Quantum family Linux support
 - Linux ALSA Thunderbolt audio driver
+- Quantum PipeWire
+- Quantum 2 PipeWire
+- Quantum 4848 PipeWire
 - Quantum 2626 PipeWire
 - out-of-tree ALSA PCI driver
 - 48 kHz multichannel duplex audio

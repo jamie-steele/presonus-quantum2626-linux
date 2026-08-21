@@ -114,4 +114,4 @@ Run on a Windows machine with the Quantum 2626 and the PreSonus driver installed
 
 ## Optional: dump-on-trigger in the driver
 
-The driver can support a module parameter `dump_on_trigger`. When set, it logs the same MMIO region in `prepare` and in `trigger(START/STOP)`. That gives you “at rest”, “at prepare”, “at start”, “at stop” snapshots without implementing real programming yet. See driver README and the param in `snd-quantum2626.c`.
+The driver can support a module parameter `dump_on_trigger`. When set, it logs the same MMIO region in `prepare` and in `trigger(START/STOP)`. That gives you “at rest”, “at prepare”, “at start”, “at stop” snapshots without implementing real programming yet. See driver README and the param in `snd-quantum.c`.

@@ -1,0 +1,4 @@
+# Allow whitespace in markdown files
+*.md  whitespace=-trailing-space
+*.c whitespace=trailing-space,space-before-tab
+*.h whitespace=trailing-space,space-before-tab

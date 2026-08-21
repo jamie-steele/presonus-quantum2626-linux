@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Experimental ALSA PCI driver for PreSonus Quantum 2626.
- * PCI ID 1c67:0104.
+ * SPDX-FileCopyrightText: 2026 Jamie Steele
+ * SPDX-FileCopyrightText: 2026 Raphaël Doursenaud
+ *
+ * Experimental ALSA PCI driver for PreSonus Quantum Thunderbolt Family
  *
  * The TCI control mailbox is implemented from static analysis of the vendor's
  * macOS DriverKit extension. PCM rate and channel profiles follow the
@@ -24,16 +26,39 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 
-#define DRV_NAME "snd-quantum2626"
-#define QUANTUM_NAMELONG "PreSonus Quantum 2626"
+#define DRV_NAME "snd-quantum"
 
-/* PreSonus PCI vendor ID (from driver-reference/pae_quantum.inf) */
-#define PCI_VENDOR_ID_PRESONUS	0x1c67
-#define PCI_DEVICE_ID_QUANTUM2626	0x0104
+/* ----- PCI table ----- */
+
+// TODO: move to `pci_ids.h` for kernel inclusion
+#define PCI_VENDOR_ID_PRESONUS			0x1c67
+
+#define PCI_DEVICE_ID_QUANTUM			0x0101
+#define PCI_DEVICE_ID_QUANTUM2			0x0102
+#define PCI_DEVICE_ID_QUANTUM4848		0x0103
+#define PCI_DEVICE_ID_QUANTUM2626		0x0104
+#define PCI_DEVICE_ID_QUANTUM_MOBILE	0x0105	/* Unreleased prototype? */
+
+#define LONGNAME_QUANTUM				"PreSonus Quantum"
+#define LONGNAME_QUANTUM_2				"PreSonus Quantum 2"
+#define LONGNAME_QUANTUM_4848			"PreSonus Quantum 4848"
+#define LONGNAME_QUANTUM_2626			"PreSonus Quantum 2626"
+#define LONGNAME_QUANTUM_MOBILE			"Presonus Quantum Mobile"	/* Unreleased prototype? */
+
+static const struct pci_device_id snd_quantum_ids[] = {
+	{ PCI_DEVICE(PCI_VENDOR_ID_PRESONUS, PCI_DEVICE_ID_QUANTUM) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_PRESONUS, PCI_DEVICE_ID_QUANTUM2) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_PRESONUS, PCI_DEVICE_ID_QUANTUM4848) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_PRESONUS, PCI_DEVICE_ID_QUANTUM2626) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_PRESONUS, PCI_DEVICE_ID_QUANTUM_MOBILE) },
+	{ 0, }
+};
+MODULE_DEVICE_TABLE(pci, snd_quantum_ids);
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
 static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;
+static bool enable_experimental_mobile;
 
 module_param_array(index, int, NULL, 0444);
 MODULE_PARM_DESC(index, "Index value for PreSonus Quantum card.");
@@ -41,6 +66,9 @@ module_param_array(id, charp, NULL, 0444);
 MODULE_PARM_DESC(id, "ID string for PreSonus Quantum card.");
 module_param_array(enable, bool, NULL, 0444);
 MODULE_PARM_DESC(enable, "Enable PreSonus Quantum card.");
+module_param(enable_experimental_mobile, bool, 0444);
+MODULE_PARM_DESC(enable_experimental_mobile,
+	"Enable support for unreleased/experimental Quantum Mobile hardware (PCI ID 0x0105). Default is false.");
 
 /* Register access for reverse engineering */
 static int reg_read_offset = -1;
@@ -59,9 +87,11 @@ static bool reg_scan;
 module_param(reg_scan, bool, 0644);
 MODULE_PARM_DESC(reg_scan, "Scan and dump first 256 bytes of MMIO (0x00-0xff).");
 
-MODULE_AUTHOR("Quantum2626 Linux driver project");
+MODULE_AUTHOR("Quantum Thunderbolt Family Linux Driver Project, "
+	"Jamie Steele <steele.jamie1991@gmail.com>, "
+	"Raphaël Doursenaud <raphael@doursenaud.fr>");
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Experimental PreSonus Quantum 2626 ALSA PCI driver");
+MODULE_DESCRIPTION("Experimental PreSonus Quantum Thunderbolt Family ALSA PCIe driver");
 
 /* Read-only identity/status registers. */
 #define QUANTUM_REG_VERSION	0x0000	/* Version/ID register */
@@ -91,7 +121,7 @@ MODULE_DESCRIPTION("Experimental PreSonus Quantum 2626 ALSA PCI driver");
 #define QUANTUM_AUDIO_CONTROL_RUN	0x3
 #define QUANTUM_AUDIO_STOPPED_MASK	0x3
 #define QUANTUM_AUDIO_MIN_CHANNELS	8
-#define QUANTUM_AUDIO_MAX_CHANNELS	26
+#define QUANTUM_AUDIO_MAX_CHANNELS	48
 #define QUANTUM_AUDIO_PERIOD_FRAMES	128
 #define QUANTUM_AUDIO_MIN_PERIODS	2
 #define QUANTUM_AUDIO_MAX_PERIODS	64
@@ -134,6 +164,12 @@ MODULE_DESCRIPTION("Experimental PreSonus Quantum 2626 ALSA PCI driver");
 
 #define QUANTUM_TCI_CHANNEL_CONTROL	0x31
 #define QUANTUM_TCI_CTRL_GET_SAMPLE_RATE	0x31
+#define QUANTUM_TCI_RATE_44100			1
+#define QUANTUM_TCI_RATE_48000			2
+#define QUANTUM_TCI_RATE_88200			3
+#define QUANTUM_TCI_RATE_96000			4
+#define QUANTUM_TCI_RATE_176400			5
+#define QUANTUM_TCI_RATE_192000			6
 #define QUANTUM_TCI_CTRL_SET_SAMPLE_RATE	0x32
 #define QUANTUM_TCI_CTRL_RSP_SAMPLE_RATE	0x35
 #define QUANTUM_TCI_CTRL_RSP_STATUS	0x01
@@ -142,6 +178,8 @@ MODULE_DESCRIPTION("Experimental PreSonus Quantum 2626 ALSA PCI driver");
 #define QUANTUM_TCI_CTRL_GET_POWER_STATE	0x3b
 #define QUANTUM_TCI_CTRL_RSP_POWER_STATE	0x3c
 #define QUANTUM_TCI_CLOCK_SOURCE_INTERNAL	1
+
+static const unsigned int supported_period_sizes[] = { 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
 struct quantum_tci_header {
 	__le16 length;
@@ -163,6 +201,10 @@ struct quantum_dma_table {
 struct quantum_chip {
 	struct snd_card *card;
 	struct pci_dev *pci;
+	const char *id;
+	const char *model_name;
+	const struct quantum_rate_profile *rate_profiles;
+	unsigned int rate_profile_count;
 	void __iomem *iobase;	/* BAR 0, 1 MiB from lspci */
 	int irq;
 	bool irq_requested;
@@ -179,7 +221,8 @@ struct quantum_chip {
 	bool tci_started;
 	u32 clock_source;
 	unsigned int audio_rate;
-	unsigned int audio_channels;
+	unsigned int audio_inputs;
+	unsigned int audio_outputs;
 	struct snd_pcm *pcm;
 	/* Serializes duplex parameter, prepare, and resource changes. */
 	struct mutex audio_mutex;
@@ -191,8 +234,9 @@ struct quantum_chip {
 	spinlock_t audio_lock;
 	struct quantum_dma_table playback_table;
 	struct quantum_dma_table capture_table;
-	/* Fixed PCM buffers and their page tables stay valid until card release. */
-	size_t audio_buffer_bytes;
+	unsigned int audio_buffer_frames;
+	size_t playback_buffer_bytes;
+	size_t capture_buffer_bytes;
 	u32 audio_params;
 	u32 audio_prepared;
 	u32 audio_running;
@@ -538,39 +582,150 @@ out_unlock:
 
 struct quantum_rate_profile {
 	unsigned int rate;
-	unsigned int channels;
+	unsigned int inputs;
+	unsigned int outputs;
 	u32 tci_value;
 };
 
-static const struct quantum_rate_profile quantum_rate_profiles[] = {
-	{ 44100,  26, 1 },
-	{ 48000,  26, 2 },
-	{ 88200,  18, 3 },
-	{ 96000,  18, 4 },
-	{ 176400,  8, 5 },
-	{ 192000,  8, 6 },
+static const struct quantum_rate_profile quantum_rate_profiles_quantum[] = {
+	/*
+	 * Quantum (aka 26x32) profile
+	 *
+	 * Inputs (26)
+	 * - 2 Mic/Line/Inst
+	 * - 6 Mic/Line
+	 * - 1 S/PDIF (2)
+	 * - 2 ADAT (8×2=16)
+	 *
+	 * Outputs (32)
+	 * - 2 Main
+	 * - 8 Line
+	 * - 2 stereo phones (2×2=4)
+	 * - 1 S/PDIF (2)
+	 * - 2 ADAT (8×2=16)
+	 */
+	{.rate = 44100, .inputs = 26, .outputs = 32, .tci_value = QUANTUM_TCI_RATE_44100},
+	{.rate = 48000, .inputs = 26, .outputs = 32, .tci_value = QUANTUM_TCI_RATE_48000},
+	/* ADAT Double Speed (ADAT channels halved) */
+	{.rate = 88200, .inputs = 18, .outputs = 24, .tci_value = QUANTUM_TCI_RATE_88200},
+	{.rate = 96000, .inputs = 18, .outputs = 24, .tci_value = QUANTUM_TCI_RATE_96000},
+	/* ADAT Quad Speed not supported (ADAT disabled, analog only) */
+	{.rate = 176400, .inputs = 10, .outputs = 16, .tci_value = QUANTUM_TCI_RATE_176400},
+	{.rate = 192000, .inputs = 10, .outputs = 16, .tci_value = QUANTUM_TCI_RATE_192000},
+};
+
+static const struct quantum_rate_profile quantum_rate_profiles_quantum2[] = {
+	/*
+	 * Quantum 2 (aka 22x24) profile
+	 *
+	 * Inputs (22)
+	 * - 2 Mic/Inst
+	 * - 2 Mic/Line
+	 * - 1 S/PDIF (2)
+	 * - 2 ADAT (8×2=16)
+	 *
+	 * Outputs (24)
+	 * - 4 Line
+	 * - 1 stereo phones (2)
+	 * - 1 S/PDIF (2)
+	 * - 2 ADAT (8×2=16)
+	 */
+	{.rate = 44100, .inputs = 22, .outputs = 24, .tci_value = QUANTUM_TCI_RATE_44100},
+	{.rate = 48000, .inputs = 22, .outputs = 24, .tci_value = QUANTUM_TCI_RATE_48000},
+	/* ADAT Double Speed (ADAT channels halved) */
+	{.rate = 88200, .inputs = 14, .outputs = 16, .tci_value = QUANTUM_TCI_RATE_88200},
+	{.rate = 96000, .inputs = 14, .outputs = 16, .tci_value = QUANTUM_TCI_RATE_96000},
+	/* ADAT Quad Speed not supported (ADAT disabled, analog only) */
+	{.rate = 176400, .inputs = 6, .outputs = 8, .tci_value = QUANTUM_TCI_RATE_176400},
+	{.rate = 192000, .inputs = 6, .outputs = 8, .tci_value = QUANTUM_TCI_RATE_192000},
+};
+
+static const struct quantum_rate_profile quantum_rate_profiles_quantum4848[] = {
+	/*
+	 * Quantum 4848 profile
+	 *
+	 * Inputs (48)
+	 * - 32 Line
+	 * - 2 ADAT (8×2=16)
+	 *
+	 * Outputs (48)
+	 * - 32 Line
+	 * - 2 ADAT (8×2=16)
+	 */
+	{.rate = 44100, .inputs = 48, .outputs = 48, .tci_value = QUANTUM_TCI_RATE_44100},
+	{.rate = 48000, .inputs = 48, .outputs = 48, .tci_value = QUANTUM_TCI_RATE_48000},
+	/* ADAT Double Speed (ADAT channels halved) */
+	{.rate = 88200, .inputs = 40, .outputs = 40, .tci_value = QUANTUM_TCI_RATE_88200},
+	{.rate = 96000, .inputs = 40, .outputs = 40, .tci_value = QUANTUM_TCI_RATE_96000},
+	/* ADAT Quad Speed not supported (ADAT disabled, analog only) */
+	{.rate = 176400, .inputs = 32, .outputs = 32, .tci_value = QUANTUM_TCI_RATE_176400},
+	{.rate = 192000, .inputs = 32, .outputs = 32, .tci_value = QUANTUM_TCI_RATE_192000},
+};
+
+static const struct quantum_rate_profile quantum_rate_profiles_quantum2626[] = {
+	/*
+	 * Quantum 2626 profile
+	 *
+	 * Inputs (26)
+	 * - 2 Mic/Inst
+	 * - 6 Mic/Line
+	 * - 1 S/PDIF (2)
+	 * - 2 ADAT (8×2=16)
+	 *
+	 * Outputs (26)
+	 * - 8 Line
+	 * - 1 S/PDIF (2)
+	 * - 2 ADAT (8×2=16)
+	 */
+	{.rate = 44100, .inputs = 26, .outputs = 26, .tci_value = QUANTUM_TCI_RATE_44100},
+	{.rate = 48000, .inputs = 26, .outputs = 26, .tci_value = QUANTUM_TCI_RATE_48000},
+	/* ADAT Double Speed (ADAT channels halved) */
+	{.rate = 88200, .inputs = 18, .outputs = 18, .tci_value = QUANTUM_TCI_RATE_88200},
+	{.rate = 96000, .inputs = 18, .outputs = 18, .tci_value = QUANTUM_TCI_RATE_96000},
+	/* ADAT Quad Speed not supported (ADAT disabled, analog only) */
+	{.rate = 176400, .inputs = 8, .outputs = 8, .tci_value = QUANTUM_TCI_RATE_176400},
+	{.rate = 192000, .inputs = 8, .outputs = 8, .tci_value = QUANTUM_TCI_RATE_192000},
+};
+
+static const struct quantum_rate_profile quantum_rate_profiles_quantummobile[] = {
+	/*
+	 * Quantum Mobile profile
+	 *
+	 * Unreleased/prototype hardware.
+	 * Unknown topology.
+	 * Seems safe to assume it has at least 2 inputs and 2 outputs
+	 * and supports the same sample rates as the rest of the family.
+	 * For development/debugging purposes only.
+	 * If you own such a device, please get in touch!
+	 */
+	{.rate = 44100, .inputs = 2, .outputs = 2, .tci_value = QUANTUM_TCI_RATE_44100},
+	{.rate = 48000, .inputs = 2, .outputs = 2, .tci_value = QUANTUM_TCI_RATE_48000},
+	{.rate = 88200, .inputs = 2, .outputs = 2, .tci_value = QUANTUM_TCI_RATE_88200},
+	{.rate = 96000, .inputs = 2, .outputs = 2, .tci_value = QUANTUM_TCI_RATE_96000},
+	{.rate = 176400, .inputs = 2, .outputs = 2, .tci_value = QUANTUM_TCI_RATE_176400},
+	{.rate = 192000, .inputs = 2, .outputs = 2, .tci_value = QUANTUM_TCI_RATE_192000},
 };
 
 static const struct quantum_rate_profile *
-quantum_rate_profile_for_rate(unsigned int rate)
+quantum_get_rate_profile(struct quantum_chip *chip, unsigned int rate)
 {
 	unsigned int i;
 
-	for (i = 0; i < ARRAY_SIZE(quantum_rate_profiles); i++)
-		if (quantum_rate_profiles[i].rate == rate)
-			return &quantum_rate_profiles[i];
-
+	for (i = 0; i < chip->rate_profile_count; i++) {
+		if (chip->rate_profiles[i].rate == rate)
+			return &chip->rate_profiles[i];
+	}
 	return NULL;
 }
 
-static unsigned int quantum_tci_decode_sample_rate(u32 value)
+static unsigned int quantum_tci_decode_sample_rate(struct quantum_chip *chip, u32 value)
 {
 	unsigned int i;
 
-	for (i = 0; i < ARRAY_SIZE(quantum_rate_profiles); i++)
-		if (quantum_rate_profiles[i].tci_value == value)
-			return quantum_rate_profiles[i].rate;
-
+	for (i = 0; i < chip->rate_profile_count; i++) {
+		if (chip->rate_profiles[i].tci_value == value)
+			return chip->rate_profiles[i].rate;
+	}
 	return 0;
 }
 
@@ -596,10 +751,8 @@ static int quantum_tci_get_sample_rate(struct quantum_chip *chip,
 	if (response_length != sizeof(response))
 		return -EPROTO;
 
-	*device_rate = quantum_tci_decode_sample_rate(
-		le32_to_cpu(response.device_rate));
-	*clock_rate = quantum_tci_decode_sample_rate(
-		le32_to_cpu(response.clock_rate));
+	*device_rate = quantum_tci_decode_sample_rate(chip, le32_to_cpu(response.device_rate));
+	*clock_rate = quantum_tci_decode_sample_rate(chip, le32_to_cpu(response.clock_rate));
 	if (!*device_rate)
 		return -EPROTO;
 
@@ -664,8 +817,8 @@ static int quantum_tci_set_sample_rate(
 
 	for (retries = 0; retries < 100; retries++) {
 		channels = readl(chip->iobase + QUANTUM_REG_AUDIO_CHANNELS);
-		if ((channels & 0xff) == profile->channels &&
-		    ((channels >> 8) & 0xff) == profile->channels)
+		if ((channels & 0xff) == profile->inputs &&
+		    ((channels >> 8) & 0xff) == profile->outputs)
 			break;
 		usleep_range(1000, 2000);
 	}
@@ -677,10 +830,11 @@ static int quantum_tci_set_sample_rate(
 	}
 
 	chip->audio_rate = profile->rate;
-	chip->audio_channels = profile->channels;
+	chip->audio_inputs = profile->inputs;
+	chip->audio_outputs = profile->outputs;
 	dev_info(&chip->pci->dev,
-		 "TCI sample rate changed: rate=%u Hz channels=%u\n",
-		 chip->audio_rate, chip->audio_channels);
+		 "TCI sample rate changed: rate=%u Hz inputs=%u outputs=%u\n",
+		 chip->audio_rate, chip->audio_inputs, chip->audio_outputs);
 	return 0;
 }
 
@@ -725,12 +879,12 @@ static int quantum_tci_probe_control(struct quantum_chip *chip)
 					  &clock_rate);
 	if (err)
 		return err;
-	profile = quantum_rate_profile_for_rate(device_rate);
+	profile = quantum_get_rate_profile(chip, device_rate);
 	if (!profile)
 		return -EPROTO;
 	channels = readl(chip->iobase + QUANTUM_REG_AUDIO_CHANNELS);
-	if ((channels & 0xff) != profile->channels ||
-	    ((channels >> 8) & 0xff) != profile->channels) {
+	if ((channels & 0xff) != profile->inputs ||
+	    ((channels >> 8) & 0xff) != profile->outputs) {
 		dev_err(&chip->pci->dev,
 			"rate/channel profile mismatch: rate=%u channels=0x%08x\n",
 			device_rate, channels);
@@ -738,12 +892,14 @@ static int quantum_tci_probe_control(struct quantum_chip *chip)
 	}
 	chip->clock_source = clock;
 	chip->audio_rate = device_rate;
-	chip->audio_channels = profile->channels;
+	chip->audio_inputs = profile->inputs;
+	chip->audio_outputs = profile->outputs;
+
 
 	dev_info(&chip->pci->dev,
-		 "TCI ready: power=%s clock_source=%u clock_rate=%u Hz device_rate=%u Hz channels=%u\n",
+		 "TCI ready: power=%s clock_source=%u clock_rate=%u Hz device_rate=%u Hz inputs=%u outputs=%u\n",
 		 power ? "on" : "off", clock, clock_rate, device_rate,
-		 chip->audio_channels);
+		 chip->audio_inputs, chip->audio_outputs);
 	return 0;
 }
 
@@ -796,7 +952,9 @@ static void quantum_audio_free_resources(struct quantum_chip *chip)
 	quantum_audio_clear_registers(chip);
 	quantum_dma_table_free(chip, &chip->capture_table);
 	quantum_dma_table_free(chip, &chip->playback_table);
-	chip->audio_buffer_bytes = 0;
+	chip->audio_buffer_frames = 0;
+	chip->playback_buffer_bytes = 0;
+	chip->capture_buffer_bytes = 0;
 	quantum_audio_set_prepared(chip, 0);
 }
 
@@ -945,15 +1103,9 @@ static int quantum_audio_wait_page_tables(struct quantum_chip *chip)
 
 static int quantum_audio_program_resources(struct quantum_chip *chip)
 {
-	u32 buffer_frames;
 	int err;
 
-	if (!chip->capture_table.area || !chip->playback_table.area ||
-	    !chip->audio_channels)
-		return -EINVAL;
-	buffer_frames = chip->audio_buffer_bytes /
-		(chip->audio_channels * QUANTUM_AUDIO_BYTES_PER_SAMPLE);
-	if (!buffer_frames || buffer_frames > GENMASK(19, 0))
+	if (!chip->capture_table.area || !chip->playback_table.area || !chip->audio_buffer_frames)
 		return -EINVAL;
 
 	quantum_audio_set_prepared(chip, 0);
@@ -961,7 +1113,8 @@ static int quantum_audio_program_resources(struct quantum_chip *chip)
 
 	/* Match the DEXT: stop, program playback first, then record. */
 	writel(0, chip->iobase + QUANTUM_REG_AUDIO_CONTROL);
-	writel(buffer_frames,
+
+	writel(chip->audio_buffer_frames,
 	       chip->iobase + QUANTUM_REG_PLAY_BUFFER_FRAMES);
 	writel(QUANTUM_AUDIO_PERIOD_FRAMES,
 	       chip->iobase + QUANTUM_REG_PLAY_BLOCK_FRAMES);
@@ -970,7 +1123,7 @@ static int quantum_audio_program_resources(struct quantum_chip *chip)
 	writel(lower_32_bits(chip->playback_table.dma),
 	       chip->iobase + QUANTUM_REG_PLAY_TABLE_LO);
 
-	writel(buffer_frames,
+	writel(chip->audio_buffer_frames,
 	       chip->iobase + QUANTUM_REG_REC_BUFFER_FRAMES);
 	writel(QUANTUM_AUDIO_PERIOD_FRAMES,
 	       chip->iobase + QUANTUM_REG_REC_BLOCK_FRAMES);
@@ -982,12 +1135,17 @@ static int quantum_audio_program_resources(struct quantum_chip *chip)
 	err = quantum_audio_wait_page_tables(chip);
 	if (err)
 		return err;
+
 	quantum_audio_set_prepared(chip, chip->audio_params);
+
 	dev_info(&chip->pci->dev,
-		 "audio DMA prepared: directions=0x%x bytes=%zu buffer_frames=%u block_frames=%u page_status=0x%08x\n",
-		 chip->audio_params, chip->audio_buffer_bytes, buffer_frames,
-		 QUANTUM_AUDIO_PERIOD_FRAMES,
-		 readl(chip->iobase + QUANTUM_REG_AUDIO_PAGE_STATUS));
+		  "audio DMA prepared: directions=0x%x frames=%u in_buffer_bytes=%zu out_buffer_bytes=%zu block_frames=%u page_status=0x%08x\n",
+		  chip->audio_params,
+		  chip->audio_buffer_frames,
+		  chip->capture_buffer_bytes,
+		  chip->playback_buffer_bytes,
+		  QUANTUM_AUDIO_PERIOD_FRAMES,
+		  readl(chip->iobase + QUANTUM_REG_AUDIO_PAGE_STATUS));
 
 	return 0;
 }
@@ -1018,25 +1176,11 @@ static const struct snd_pcm_hardware quantum_pcm_hw = {
 	.periods_max = QUANTUM_AUDIO_MAX_PERIODS,
 };
 
-static const unsigned int quantum_rates[] = {
-	44100, 48000, 88200, 96000, 176400, 192000,
-};
-
-static const struct snd_pcm_hw_constraint_list quantum_rate_constraints = {
-	.count = ARRAY_SIZE(quantum_rates),
-	.list = quantum_rates,
-};
-
-static const unsigned int quantum_channel_counts[] = { 8, 18, 26 };
-
-static const struct snd_pcm_hw_constraint_list quantum_channel_constraints = {
-	.count = ARRAY_SIZE(quantum_channel_counts),
-	.list = quantum_channel_counts,
-};
-
 static int quantum_pcm_channels_for_rate_rule(struct snd_pcm_hw_params *params,
 					      struct snd_pcm_hw_rule *rule)
 {
+	struct snd_pcm_substream *substream = rule->private;
+	struct quantum_chip *chip = snd_pcm_substream_chip(substream);
 	const struct snd_interval *rate =
 		hw_param_interval_c(params, SNDRV_PCM_HW_PARAM_RATE);
 	struct snd_interval allowed = {
@@ -1045,16 +1189,20 @@ static int quantum_pcm_channels_for_rate_rule(struct snd_pcm_hw_params *params,
 		.integer = 1,
 	};
 	unsigned int i;
+	unsigned int limit;
 
-	(void)rule;
-	for (i = 0; i < ARRAY_SIZE(quantum_rate_profiles); i++) {
-		if (!snd_interval_test(rate, quantum_rate_profiles[i].rate))
+	for (i = 0; i < chip->rate_profile_count; i++) {
+		if (!snd_interval_test(rate, chip->rate_profiles[i].rate))
 			continue;
-		allowed.min = min(allowed.min,
-				  quantum_rate_profiles[i].channels);
-		allowed.max = max(allowed.max,
-				  quantum_rate_profiles[i].channels);
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+			limit = chip->rate_profiles[i].outputs;
+		else
+			limit = chip->rate_profiles[i].inputs;
+
+		if (limit < allowed.min) allowed.min = limit;
+		if (limit > allowed.max) allowed.max = limit;
 	}
+
 	if (!allowed.max)
 		return -EINVAL;
 
@@ -1065,6 +1213,8 @@ static int quantum_pcm_channels_for_rate_rule(struct snd_pcm_hw_params *params,
 static int quantum_pcm_rates_for_channels_rule(struct snd_pcm_hw_params *params,
 					       struct snd_pcm_hw_rule *rule)
 {
+	struct snd_pcm_substream *substream = rule->private;
+	struct quantum_chip *chip = snd_pcm_substream_chip(substream);
 	const struct snd_interval *channels =
 		hw_param_interval_c(params, SNDRV_PCM_HW_PARAM_CHANNELS);
 	struct snd_interval allowed = {
@@ -1073,14 +1223,21 @@ static int quantum_pcm_rates_for_channels_rule(struct snd_pcm_hw_params *params,
 		.integer = 1,
 	};
 	unsigned int i;
+	unsigned int limit;
 
-	(void)rule;
-	for (i = 0; i < ARRAY_SIZE(quantum_rate_profiles); i++) {
-		if (!snd_interval_test(channels,
-				       quantum_rate_profiles[i].channels))
+	for (i = 0; i < chip->rate_profile_count; i++) {
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+			limit = chip->rate_profiles[i].outputs;
+		else
+			limit = chip->rate_profiles[i].inputs;
+
+		if (!snd_interval_test(channels, limit))
 			continue;
-		allowed.min = min(allowed.min, quantum_rate_profiles[i].rate);
-		allowed.max = max(allowed.max, quantum_rate_profiles[i].rate);
+
+		if (chip->rate_profiles[i].rate < allowed.min)
+			allowed.min = chip->rate_profiles[i].rate;
+		if (chip->rate_profiles[i].rate > allowed.max)
+			allowed.max = chip->rate_profiles[i].rate;
 	}
 	if (!allowed.max)
 		return -EINVAL;
@@ -1101,36 +1258,54 @@ static int quantum_pcm_open(struct snd_pcm_substream *substream)
 	u32 channels = readl(chip->iobase + QUANTUM_REG_AUDIO_CHANNELS);
 	int err;
 
-	if ((channels & 0xff) != chip->audio_channels ||
-	    ((channels >> 8) & 0xff) != chip->audio_channels)
-		return -ENODEV;
+	if ((channels & 0xff) != chip->audio_inputs ||
+	    ((channels >> 8) & 0xff) != chip->audio_outputs) {
+		dev_err(&chip->pci->dev,
+		"channels mismatch: hw=0x%08x (in=%u/out=%u) expected in=%u/out=%u\n",
+			channels,
+			channels & 0xff, (channels >> 8) & 0xff,
+			chip->audio_inputs, chip->audio_outputs);
+		return -EINVAL;
+	}
 
 	substream->runtime->hw = quantum_pcm_hw;
-	err = snd_pcm_hw_constraint_list(substream->runtime, 0,
-					 SNDRV_PCM_HW_PARAM_RATE,
-					 &quantum_rate_constraints);
+
+	const struct quantum_rate_profile *profile = quantum_get_rate_profile(chip, chip->audio_rate);
+	if (profile) {
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+			substream->runtime->hw.channels_max = profile->outputs;
+		else
+			substream->runtime->hw.channels_max = profile->inputs;
+	} else {
+		dev_warn(&chip->pci->dev, "No rate profile found for %u Hz, using defaults\n", chip->audio_rate);
+	}
+
+	err = snd_pcm_hw_constraint_minmax(substream->runtime,
+		SNDRV_PCM_HW_PARAM_PERIOD_SIZE,
+		QUANTUM_AUDIO_PERIOD_FRAMES,
+		QUANTUM_AUDIO_PERIOD_FRAMES);
 	if (err)
 		return err;
-	err = snd_pcm_hw_constraint_list(substream->runtime, 0,
-					 SNDRV_PCM_HW_PARAM_CHANNELS,
-					 &quantum_channel_constraints);
+
+	err = snd_pcm_hw_constraint_integer(substream->runtime, SNDRV_PCM_HW_PARAM_PERIODS);
 	if (err)
 		return err;
-	err = snd_pcm_hw_constraint_integer(substream->runtime,
-					    SNDRV_PCM_HW_PARAM_PERIODS);
-	if (err)
-		return err;
+
 	err = snd_pcm_hw_rule_add(substream->runtime, 0,
 				  SNDRV_PCM_HW_PARAM_CHANNELS,
-				  quantum_pcm_channels_for_rate_rule, NULL,
+				  quantum_pcm_channels_for_rate_rule, substream,
 				  SNDRV_PCM_HW_PARAM_RATE, -1);
 	if (err)
 		return err;
 
-	return snd_pcm_hw_rule_add(substream->runtime, 0,
+	err = snd_pcm_hw_rule_add(substream->runtime, 0,
 				   SNDRV_PCM_HW_PARAM_RATE,
-				   quantum_pcm_rates_for_channels_rule, NULL,
+				   quantum_pcm_rates_for_channels_rule, substream,
 				   SNDRV_PCM_HW_PARAM_CHANNELS, -1);
+	if (err)
+		return err;
+
+	return 0;
 }
 
 static int quantum_pcm_close(struct snd_pcm_substream *substream)
@@ -1139,21 +1314,30 @@ static int quantum_pcm_close(struct snd_pcm_substream *substream)
 }
 
 static int quantum_audio_configure_resources(struct quantum_chip *chip,
-					     size_t bytes)
+					     unsigned int frames)
 {
 	struct snd_pcm_substream *playback =
-		chip->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
+	chip->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
 	struct snd_pcm_substream *capture =
 		chip->pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream;
 	dma_addr_t playback_dma, capture_dma;
+	size_t playback_bytes, capture_bytes;
 	u32 capture_addresses, playback_addresses;
 	int err;
 
+	if (check_mul_overflow(frames, chip->audio_outputs, &playback_bytes) ||
+	check_mul_overflow(playback_bytes, QUANTUM_AUDIO_BYTES_PER_SAMPLE, &playback_bytes)) {
+		return -EINVAL;
+	}
+	if (check_mul_overflow(frames, chip->audio_inputs, &capture_bytes) ||
+		check_mul_overflow(capture_bytes, QUANTUM_AUDIO_BYTES_PER_SAMPLE, &capture_bytes)) {
+		return -EINVAL;
+		}
+
 	if (!playback || !capture || !playback->dma_buffer.area ||
 	    !capture->dma_buffer.area ||
-	    playback->dma_buffer.bytes < QUANTUM_AUDIO_MAX_BUFFER_BYTES ||
-	    capture->dma_buffer.bytes < QUANTUM_AUDIO_MAX_BUFFER_BYTES ||
-	    bytes > QUANTUM_AUDIO_MAX_BUFFER_BYTES)
+	    playback_bytes > QUANTUM_AUDIO_MAX_BUFFER_BYTES ||
+	    capture_bytes > QUANTUM_AUDIO_MAX_BUFFER_BYTES)
 		return -ENOMEM;
 
 	playback_dma = playback->dma_buffer.addr;
@@ -1172,15 +1356,16 @@ static int quantum_audio_configure_resources(struct quantum_chip *chip,
 	if (err)
 		goto fail;
 	err = quantum_dma_table_populate(chip, &chip->capture_table,
-					 capture_dma, bytes);
+					 capture_dma, capture_bytes);
 	if (err)
 		goto fail;
 	err = quantum_dma_table_populate(chip, &chip->playback_table,
-					 playback_dma, bytes);
+					 playback_dma, playback_bytes);
 	if (err)
 		goto fail;
-	chip->audio_buffer_bytes = bytes;
-
+	chip->playback_buffer_bytes = playback_bytes;
+	chip->capture_buffer_bytes = capture_bytes;
+	chip->audio_buffer_frames = frames;
 	return 0;
 
 fail:
@@ -1191,65 +1376,91 @@ fail:
 static int quantum_pcm_hw_params(struct snd_pcm_substream *substream,
 				 struct snd_pcm_hw_params *params)
 {
-	const struct quantum_rate_profile *profile =
-		quantum_rate_profile_for_rate(params_rate(params));
 	struct quantum_chip *chip = snd_pcm_substream_chip(substream);
+	const struct quantum_rate_profile *profile =
+		quantum_get_rate_profile(chip, params_rate(params));
 	struct snd_pcm_substream **params_substream;
 	struct snd_pcm_substream *other;
-	size_t bytes = params_buffer_bytes(params);
-	u32 mask = quantum_stream_mask(substream);
 	bool changing_rate;
 	int err = 0;
 
-	if (!profile || params_channels(params) != profile->channels ||
-	    params_format(params) != SNDRV_PCM_FORMAT_S32_LE ||
-	    params_period_size(params) != QUANTUM_AUDIO_PERIOD_FRAMES)
+	dev_dbg(&chip->pci->dev,
+		 "[DEBUG] hw_params: stream=%s rate=%u ch=%u fmt=%d period=%u periods=%u\n",
+		 substream->stream == SNDRV_PCM_STREAM_PLAYBACK ? "PLAY" : "CAP",
+		 params_rate(params),
+		 params_channels(params),
+		 params_format(params),
+		 params_period_size(params),
+		 params_periods(params));
+
+	if (!profile) {
+		dev_err(&chip->pci->dev,
+			"requested parameters unsupported: no profile for rate %u Hz\n",
+			params_rate(params));
 		return -EINVAL;
+	}
+
+	unsigned int expected_channels;
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		expected_channels = profile->outputs;
+	else
+		expected_channels = profile->inputs;
+
+	if (params_channels(params) != expected_channels) {
+		dev_err(&chip->pci->dev,
+			"requested parameters unsupported: channels %u != expected %u\n",
+			params_channels(params), expected_channels);
+		return -EINVAL;
+	}
+
+	if (params_format(params) != SNDRV_PCM_FORMAT_S32_LE) {
+		dev_err(&chip->pci->dev,
+			"requested parameters unsupported: format %d != S32_LE\n",
+			params_format(params));
+		return -EINVAL;
+	}
+
+	unsigned int frames = params_buffer_size(params);
+	u32 mask = quantum_stream_mask(substream);
 
 	mutex_lock(&chip->audio_mutex);
 	other = mask == QUANTUM_STREAM_PLAYBACK ?
 		chip->capture_params_substream : chip->playback_params_substream;
 	if (other &&
 	    (other->runtime->rate != params_rate(params) ||
-	     other->runtime->channels != params_channels(params) ||
 	     other->runtime->period_size != params_period_size(params) ||
 	     other->runtime->buffer_size != params_buffer_size(params))) {
+		dev_err(&chip->pci->dev, "changed parameters unsupported");
 		err = -EINVAL;
 		goto unlock;
 	}
 	changing_rate = chip->audio_rate != profile->rate;
 	if (changing_rate && READ_ONCE(chip->audio_engine_running)) {
+		dev_err(&chip->pci->dev, "busy while changing rate");
 		err = -EBUSY;
 		goto unlock;
 	}
 	if (changing_rate) {
 		/* The engine is stopped; fixed DMA mappings remain valid. */
 		err = quantum_tci_set_sample_rate(chip, profile);
-		if (err)
+		if (err) {
+			dev_err(&chip->pci->dev, "changing sample rate TCI failed");
 			goto unlock;
+		}
 	}
 
 	params_substream = mask == QUANTUM_STREAM_PLAYBACK ?
 		&chip->playback_params_substream : &chip->capture_params_substream;
 	*params_substream = substream;
 	chip->audio_params |= mask;
-	quantum_audio_set_prepared(chip,
-				   READ_ONCE(chip->audio_prepared) & ~mask);
-	if (!chip->capture_table.area || !chip->playback_table.area ||
-	    chip->audio_buffer_bytes != bytes) {
-		if (READ_ONCE(chip->audio_engine_running)) {
-			err = -EBUSY;
-			goto clear_params;
-		}
-		err = quantum_audio_configure_resources(chip, bytes);
-		if (err)
-			goto clear_params;
-	}
-	goto unlock;
+	quantum_audio_set_prepared(chip,0);
 
-clear_params:
-	chip->audio_params &= ~mask;
-	*params_substream = NULL;
+	err = quantum_audio_configure_resources(chip, frames);
+	if (err) {
+		dev_err(&chip->pci->dev, "unable to configure resources");
+		chip->audio_params &= ~mask;
+		*params_substream = NULL;
+	}
 
 unlock:
 	mutex_unlock(&chip->audio_mutex);
@@ -1273,13 +1484,22 @@ static int quantum_pcm_hw_free(struct snd_pcm_substream *substream)
 		synchronize_irq(chip->irq);
 	params_substream = mask == QUANTUM_STREAM_PLAYBACK ?
 		&chip->playback_params_substream : &chip->capture_params_substream;
+
 	*params_substream = NULL;
 	chip->audio_params &= ~mask;
 	quantum_audio_set_prepared(chip,
 				   READ_ONCE(chip->audio_prepared) & ~mask);
-	if (mask == QUANTUM_STREAM_PLAYBACK &&
-	    substream->dma_buffer.area && chip->audio_buffer_bytes)
-		memset(substream->dma_buffer.area, 0, chip->audio_buffer_bytes);
+	if (mask == QUANTUM_STREAM_PLAYBACK) {
+		if (chip->playback_buffer_bytes > 0 && substream->dma_buffer.area) {
+			size_t safe_size = min(chip->playback_buffer_bytes, substream->dma_buffer.bytes);
+			memset(substream->dma_buffer.area, 0, safe_size);
+		}
+	} else {
+		if (chip->capture_buffer_bytes > 0 && substream->dma_buffer.area) {
+			size_t safe_size = min(chip->capture_buffer_bytes, substream->dma_buffer.bytes);
+			memset(substream->dma_buffer.area, 0, safe_size);
+		}
+	}
 	/*
 	 * The fixed ALSA buffers outlive hw_free.  Keep both page tables and
 	 * their MMIO addresses valid as well: the device can issue a final DMA
@@ -1307,24 +1527,32 @@ static void quantum_pcm_apply_latency_qos(struct snd_pcm_substream *substream)
 static int quantum_pcm_prepare(struct snd_pcm_substream *substream)
 {
 	struct quantum_chip *chip = snd_pcm_substream_chip(substream);
-	struct snd_pcm_substream *playback =
-		chip->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
-	struct snd_pcm_substream *capture =
+	struct snd_pcm_substream *playback_sub =
+	chip->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
+	struct snd_pcm_substream *capture_sub =
 		chip->pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream;
 	u32 mask = quantum_stream_mask(substream);
+	unsigned int current_frames = substream->runtime->buffer_size;
 	int err;
 
 	mutex_lock(&chip->audio_mutex);
-	if (!(chip->audio_params & mask) || !chip->capture_table.area ||
-	    !chip->playback_table.area ||
-	    substream->runtime->dma_bytes < chip->audio_buffer_bytes) {
+
+	if (!(chip->audio_params & mask) ||
+		!chip->capture_table.area ||
+		!chip->playback_table.area) {
+		err = -EINVAL;
+		goto unlock;
+		}
+
+	if (chip->audio_buffer_frames == 0 || current_frames != chip->audio_buffer_frames) {
+		dev_err(&chip->pci->dev,
+				"Frame mismatch: substream=%u vs chip=%u\n",
+				current_frames, chip->audio_buffer_frames);
 		err = -EINVAL;
 		goto unlock;
 	}
+
 	if (READ_ONCE(chip->audio_engine_running)) {
-		memset(substream->runtime->dma_area, 0,
-		       chip->audio_buffer_bytes);
-		dma_wmb();
 		quantum_audio_set_prepared(chip,
 					   READ_ONCE(chip->audio_prepared) |
 					   mask);
@@ -1332,8 +1560,22 @@ static int quantum_pcm_prepare(struct snd_pcm_substream *substream)
 		goto unlock;
 	}
 	quantum_audio_set_prepared(chip, 0);
-	memset(playback->dma_buffer.area, 0, chip->audio_buffer_bytes);
-	memset(capture->dma_buffer.area, 0, chip->audio_buffer_bytes);
+	if (mask == QUANTUM_STREAM_PLAYBACK) {
+		if (playback_sub && playback_sub->dma_buffer.area && chip->playback_buffer_bytes) {
+			if (chip->playback_buffer_bytes <= playback_sub->dma_buffer.bytes)
+				memset(playback_sub->dma_buffer.area, 0, chip->playback_buffer_bytes);
+			else
+				dev_warn(&chip->pci->dev, "Skipping playback memset: size mismatch\n");
+		}
+	} else {
+		if (capture_sub && capture_sub->dma_buffer.area && chip->capture_buffer_bytes) {
+			if (chip->capture_buffer_bytes <= capture_sub->dma_buffer.bytes)
+				memset(capture_sub->dma_buffer.area, 0, chip->capture_buffer_bytes);
+			else
+				dev_warn(&chip->pci->dev, "Skipping capture memset: size mismatch\n");
+		}
+	}
+
 	err = quantum_audio_program_resources(chip);
 
 unlock:
@@ -1435,11 +1677,11 @@ static int snd_quantum_pcm_new(struct quantum_chip *chip)
 {
 	int err;
 
-	err = snd_pcm_new(chip->card, QUANTUM_NAMELONG, 0, 1, 1, &chip->pcm);
+	err = snd_pcm_new(chip->card, chip->model_name, 0, 1, 1, &chip->pcm);
 	if (err < 0)
 		return err;
 	chip->pcm->private_data = chip;
-	strscpy(chip->pcm->name, QUANTUM_NAMELONG, sizeof(chip->pcm->name));
+	strscpy(chip->pcm->name, chip->model_name, sizeof(chip->pcm->name));
 	snd_pcm_set_ops(chip->pcm, SNDRV_PCM_STREAM_PLAYBACK,
 			&quantum_pcm_ops);
 	snd_pcm_set_ops(chip->pcm, SNDRV_PCM_STREAM_CAPTURE, &quantum_pcm_ops);
@@ -1500,16 +1742,12 @@ static irqreturn_t snd_quantum_interrupt(int irq, void *dev_id)
 		chip->audio_last_irq_status = raw_status;
 		chip->audio_last_irq_position = position;
 		if (chip->audio_engine_running) {
-			u32 buffer_frames = chip->audio_buffer_bytes /
-				(chip->audio_channels *
-				 QUANTUM_AUDIO_BYTES_PER_SAMPLE);
-
-			if (chip->audio_pending && buffer_frames) {
+			if (chip->audio_pending && chip->audio_buffer_frames) {
 				u32 frame =
-					(position & GENMASK(19, 0)) % buffer_frames;
+					(position & GENMASK(19, 0)) % chip->audio_buffer_frames;
 				u32 previous_frame =
 					(previous_position & GENMASK(19, 0)) %
-					buffer_frames;
+					chip->audio_buffer_frames;
 
 				if (frame < previous_frame) {
 					/* The hardware and late ALSA ring are aligned. */
@@ -1563,12 +1801,64 @@ static void quantum_log_device_info(struct quantum_chip *chip)
 
 /* ----- Create chip: enable PCI, claim BAR, IRQ, MMIO probe ----- */
 
+/* Initialize model-specific data in the chip structure */
+static void quantum_init_model_data(
+	struct quantum_chip *chip,
+	struct pci_dev *pci)
+{
+	switch (pci->device) {
+		case PCI_DEVICE_ID_QUANTUM:
+			chip->id = "Quantum";
+			chip->model_name = LONGNAME_QUANTUM;
+			chip->rate_profiles = quantum_rate_profiles_quantum;
+			chip->rate_profile_count = ARRAY_SIZE(quantum_rate_profiles_quantum);
+			break;
+		case PCI_DEVICE_ID_QUANTUM2:
+			chip->id = "Quantum2";
+			chip->model_name = LONGNAME_QUANTUM_2;
+			chip->rate_profiles = quantum_rate_profiles_quantum2;
+			chip->rate_profile_count = ARRAY_SIZE(quantum_rate_profiles_quantum2);
+			break;
+		case PCI_DEVICE_ID_QUANTUM4848:
+			chip->id = "Quantum4848";
+			chip->model_name = LONGNAME_QUANTUM_4848;
+			chip->rate_profiles = quantum_rate_profiles_quantum4848;
+			chip->rate_profile_count = ARRAY_SIZE(quantum_rate_profiles_quantum4848);
+			break;
+		case PCI_DEVICE_ID_QUANTUM2626:
+			chip->id = "Quantum2626";
+			chip->model_name = LONGNAME_QUANTUM_2626;
+			chip->rate_profiles = quantum_rate_profiles_quantum2626;
+			chip->rate_profile_count = ARRAY_SIZE(quantum_rate_profiles_quantum2626);
+			break;
+		case PCI_DEVICE_ID_QUANTUM_MOBILE:
+			chip->id = "QuantumMobile";
+			chip->model_name = LONGNAME_QUANTUM_MOBILE;
+			chip->rate_profiles = quantum_rate_profiles_quantummobile;
+			chip->rate_profile_count = ARRAY_SIZE(quantum_rate_profiles_quantummobile);
+			dev_warn(&pci->dev,
+				"EXPERIMENTAL: Quantum Mobile detected. Profile is guessed. Report any issues to the maintainer.\n");
+			break;
+		default:
+			// We should never be there, fallback to the original Quantum
+			chip->id = "Quantum";
+			chip->model_name = LONGNAME_QUANTUM;
+			chip->rate_profiles = quantum_rate_profiles_quantum;
+			chip->rate_profile_count = ARRAY_SIZE(quantum_rate_profiles_quantum);
+			dev_warn(&pci->dev,
+				"Unknown Quantum device ID 0x%04x, using generic settings\n",
+				pci->device);
+			break;
+	}
+}
+
 static int snd_quantum_create(struct snd_card *card, struct pci_dev *pci)
 {
 	struct quantum_chip *chip = card->private_data;
 	int err;
 	int i;
 
+	quantum_init_model_data(chip, pci);
 	chip->card = card;
 	chip->pci = pci;
 	chip->irq = pci->irq;
@@ -1687,14 +1977,6 @@ fail_regions:
 	return err;
 }
 
-/* ----- PCI table: intentionally scoped to the tested Quantum 2626 ----- */
-
-static const struct pci_device_id snd_quantum_ids[] = {
-	{ PCI_DEVICE(PCI_VENDOR_ID_PRESONUS, PCI_DEVICE_ID_QUANTUM2626) },
-	{ 0, }
-};
-MODULE_DEVICE_TABLE(pci, snd_quantum_ids);
-
 /* ----- Probe / remove ----- */
 
 static int snd_quantum_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
@@ -1709,6 +1991,13 @@ static int snd_quantum_probe(struct pci_dev *pci, const struct pci_device_id *pc
 	if (!enable[dev]) {
 		dev++;
 		return -ENOENT;
+	}
+
+	if (pci->device == PCI_DEVICE_ID_QUANTUM_MOBILE && !enable_experimental_mobile) {
+		dev_info(&pci->dev,
+			"Quantum Mobile (0x0105) detected but disabled by default. "
+			"Load module with 'enable_experimental_mobile=1' to attempt initialization.\n");
+		return -ENODEV;
 	}
 
 	err = snd_devm_card_new(&pci->dev, index[dev], id[dev], THIS_MODULE,
@@ -1730,8 +2019,9 @@ static int snd_quantum_probe(struct pci_dev *pci, const struct pci_device_id *pc
 		dev_warn(&pci->dev, "audio disabled because no IRQ is available\n");
 	}
 
+	snd_card_set_id(card, chip->id);
 	strscpy(card->driver, DRV_NAME, sizeof(card->driver));
-	strscpy(card->shortname, QUANTUM_NAMELONG, sizeof(card->shortname));
+	strscpy(card->shortname, chip->model_name, sizeof(card->shortname));
 	snprintf(card->longname, sizeof(card->longname), "%s at %s irq %i",
 		 card->shortname, pci_name(chip->pci), chip->irq);
 

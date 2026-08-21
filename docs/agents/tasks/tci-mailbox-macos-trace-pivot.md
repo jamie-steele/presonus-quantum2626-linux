@@ -65,7 +65,7 @@ it is no longer the primary source for guessing standalone register meanings.
 
 - `notes/CURRENT_STATUS.md`: canonical current evidence; it now records confirmed TCI readiness,
   stable bounded DMA, and audible stereo output.
-- `driver/snd-quantum2626.c`: the task started from experimental direct MMIO writes, a synthetic
+- `driver/snd-quantum.c`: the task started from experimental direct MMIO writes, a synthetic
   timer-driven pointer, stereo-only S16 constraints, and no TCI/mailbox model; those limitations are
   historical and have been replaced by the implementation validated below.
 - `notes/REGISTER_GUESSES.md` and `notes/GHIDRA_FINDINGS_SUMMARY.md`: Windows analysis recorded reads

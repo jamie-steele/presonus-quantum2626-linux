@@ -2,7 +2,7 @@
 # Quick Linux driver test script
 # Run this after loading the driver to check status
 
-echo "=== Quantum 2626 Driver Test ==="
+echo "=== Quantum Driver Test ==="
 echo ""
 
 # Check if driver is loaded
@@ -11,7 +11,7 @@ if lsmod | grep -q quantum; then
     DRIVER_LOADED=1
 else
     echo "❌ Driver not loaded"
-    echo "   Load with: sudo insmod driver/snd-quantum2626.ko"
+    echo "   Load with: sudo insmod driver/snd-quantum.ko"
     DRIVER_LOADED=0
 fi
 
@@ -56,7 +56,7 @@ echo ""
 
 # LED status reminder
 echo "=== LED Status Check ==="
-echo "  Check the blue LED on the Quantum 2626:"
+echo "  Check the blue LED on the Quantum:"
 echo "  - Solid blue = Device initialized correctly ✅"
 echo "  - Not solid = Initialization incomplete ❌"
 echo ""

@@ -47,7 +47,7 @@ alsa/wireplumber/51-quantum2626.lua
 ```
 
 The `conf.d` entry matches the ALSA card driver name set by
-`snd-quantum2626`. The `P2626` entry also permits direct inspection with
+`snd-quantum`. The `P2626` entry also permits direct inspection with
 `alsaucm -c P2626`. The WirePlumber rule matches only the Quantum UCM node
 names and aligns `api.alsa.period-num = 4` with the UCM direct-plugin slave's
 `periods 4`. With the current driver, alsa-lib 1.2.8, and WirePlumber 0.4,

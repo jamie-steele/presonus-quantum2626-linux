@@ -18,7 +18,7 @@ if [ -z "$WAV" ] || [ ! -f "$WAV" ]; then
   exit 1
 fi
 
-echo "=== Quantum 2626: listen test (multiple param combos) ==="
+echo "=== Quantum: listen test (multiple param combos) ==="
 echo "Sound file: $WAV"
 echo ""
 
@@ -38,11 +38,11 @@ make -C "$DRIVER_DIR" 2>&1 | tail -3
 # Unload module; if in use, script exits so user can run reload_quantum_driver.sh first
 unload_module() {
   local out
-  out=$(sudo rmmod snd_quantum2626 2>&1) || true
-  if ! lsmod | grep -q snd_quantum2626; then
+  out=$(sudo rmmod snd_quantum 2>&1) || true
+  if ! lsmod | grep -q snd_quantum; then
     return 0
   fi
-  echo "ERROR: could not unload snd_quantum2626 (module in use?)."
+  echo "ERROR: could not unload snd_quantum (module in use?)."
   echo "$out"
   echo "Run this first: ./scripts/reload_quantum_driver.sh"
   echo "Then run this listen script again."
@@ -65,7 +65,7 @@ sleep 1
 
 # 1) STATUS2=0 STATUS3=0, control=0x8 (Ghidra stream-start style)
 echo "--- reg_status2_value=0 reg_status3_value=0 control_value=0x8 ---"
-sudo insmod "$DRIVER_DIR/snd-quantum2626.ko" reg_status2_value=0 reg_status3_value=0 control_value=0x8
+sudo insmod "$DRIVER_DIR/snd-quantum.ko" reg_status2_value=0 reg_status3_value=0 control_value=0x8
 sleep 1
 play_one
 
@@ -74,7 +74,7 @@ for VAL in 0x8 0x88 0x9 0x10; do
   echo "--- control_value=$VAL (no status2/3) ---"
   unload_module
   sleep 1
-  sudo insmod "$DRIVER_DIR/snd-quantum2626.ko" control_value=$VAL
+  sudo insmod "$DRIVER_DIR/snd-quantum.ko" control_value=$VAL
   sleep 1
   play_one
 done

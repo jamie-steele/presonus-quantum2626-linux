@@ -1,5 +1,5 @@
 #!/bin/bash
-# Interactive register probing tool for Quantum 2626
+# Interactive register probing tool for Quantum
 # Allows reading/writing MMIO registers via driver module parameters
 # Usage: ./register_probe.sh [read|write] <offset> [value]
 
@@ -8,9 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Check if driver is loaded
-if ! lsmod | grep -q snd_quantum2626; then
+if ! lsmod | grep -q snd_quantum; then
     echo "ERROR: Driver not loaded. Load it first:" >&2
-    echo "  cd $REPO_ROOT/driver && make && sudo insmod snd-quantum2626.ko" >&2
+    echo "  cd $REPO_ROOT/driver && make && sudo insmod snd-quantum.ko" >&2
     exit 1
 fi
 
@@ -24,7 +24,7 @@ fi
 echo "Quantum card found: card $CARD" >&2
 
 # Check if driver supports register access via sysfs
-SYSFS_BASE="/sys/module/snd_quantum2626/parameters"
+SYSFS_BASE="/sys/module/snd_quantum/parameters"
 if [ ! -d "$SYSFS_BASE" ]; then
     echo "ERROR: Driver parameters not found. Driver may need register access support." >&2
     exit 1
@@ -91,7 +91,7 @@ case "${1:-help}" in
         "$SCRIPT_DIR/capture_mmio_baseline.sh"
         ;;
     help|*)
-        echo "Quantum 2626 Register Probe Tool" >&2
+        echo "Quantum Register Probe Tool" >&2
         echo "" >&2
         echo "Usage: $0 <command> [args...]" >&2
         echo "" >&2

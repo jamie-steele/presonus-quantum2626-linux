@@ -9,7 +9,7 @@ work.
 2. `notes/CHANNEL_ROUTING.md`
 3. `alsa/README.md`
 4. `alsa/ucm2/P2626/HiFi.conf`
-5. `driver/snd-quantum2626.c` for the current PCM constraints
+5. `driver/snd-quantum.c` for the current PCM constraints
 
 ## Boundaries
 

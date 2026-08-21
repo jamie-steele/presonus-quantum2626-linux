@@ -21,7 +21,7 @@ distinct concern. Link to source documents instead of copying large sections fro
 ## Sources Of Truth
 
 - Product and project status belongs in the root `README.md` and focused files under `notes/`.
-- Driver behavior belongs in `driver/snd-quantum2626.c`, with build usage in `driver/README.md`.
+- Driver behavior belongs in `driver/snd-quantum.c`, with build usage in `driver/README.md`.
 - Repeatable operator procedures belong under `docs/` and `scripts/`.
 - `docs/agents/` records routing, safety boundaries, source precedence, and task state. It must not
   become a competing hardware or register reference.

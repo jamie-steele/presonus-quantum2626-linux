@@ -37,7 +37,7 @@ fi
 # MODPARAMS: set from env, e.g. MODPARAMS="reg_srate_offset=0x108 reg_srate_value=48000"
 MODPARAMS=$(echo "${MODPARAMS:-}" | sed 's/^ *//; s/ *$//')
 
-echo "=== Quantum 2626 test: card=$CARD reload=$RELOAD duration=${DURATION}s build=$BUILD ==="
+echo "=== Quantum test: card=$CARD reload=$RELOAD duration=${DURATION}s build=$BUILD ==="
 [ -n "$MODPARAMS" ] && echo "MODPARAMS: $MODPARAMS"
 
 if [ "$BUILD" -eq 1 ]; then

@@ -19,7 +19,7 @@ echo "Releasing and unloading..."
 export RELOAD_ONLY=1
 "$REPO/scripts/reload_quantum_driver.sh" 2>/dev/null || true
 sleep 2
-if ! sudo rmmod snd_quantum2626 2>/dev/null; then
+if ! sudo rmmod snd_quantum 2>/dev/null; then
   echo "Module still in use. Run first: $REPO/scripts/reload_quantum_driver.sh"
   echo "Then run this script again."
   exit 1
@@ -28,16 +28,16 @@ sleep 1
 
 for VAL in $VALUES; do
   echo "--- Loading with init_control_value=$VAL ---"
-  sudo insmod "$DRIVER_DIR/snd-quantum2626.ko" init_control_value=$VAL
+  sudo insmod "$DRIVER_DIR/snd-quantum.ko" init_control_value=$VAL
   echo "    >>> Look at the LED now (solid = good?). Waiting 8s..."
   sleep 8
   echo "    Unloading..."
-  sudo rmmod snd_quantum2626
+  sudo rmmod snd_quantum
   sleep 2
 done
 
 echo ""
 echo "Loading with default (init_control_value=-1, i.e. 0x8) so you have the card back."
-sudo insmod "$DRIVER_DIR/snd-quantum2626.ko"
+sudo insmod "$DRIVER_DIR/snd-quantum.ko"
 echo "Done. Note which value (if any) made the LED solid."
-echo "Then load with that value: sudo insmod $DRIVER_DIR/snd-quantum2626.ko init_control_value=0xNN"
+echo "Then load with that value: sudo insmod $DRIVER_DIR/snd-quantum.ko init_control_value=0xNN"

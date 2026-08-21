@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Linux ALSA driver for PreSonus Quantum 2626 has been updated with hardware register programming based on reverse engineering of the Windows driver (`pae_quantum.sys`) using Ghidra.
+The Linux ALSA driver for PreSonus Quantum Thunderbolt Family has been updated with hardware register programming based on reverse engineering of the Windows driver (`pae_quantum.sys`) using Ghidra.
 
 ## Register Map (from Ghidra Analysis)
 
@@ -77,13 +77,13 @@ The driver follows the pattern observed in the Windows driver:
 
 1. **Load driver** and verify device appears:
    ```bash
-   sudo modprobe snd-quantum2626
+   sudo modprobe snd-quantum
    aplay -l
    ```
 
 2. **Enable debug logging** to see register access:
    ```bash
-   sudo modprobe snd-quantum2626 dump_on_trigger=1
+   sudo modprobe snd-quantum dump_on_trigger=1
    ```
 
 3. **Test playback** and monitor dmesg for register values:
@@ -110,7 +110,7 @@ The driver follows the pattern observed in the Windows driver:
 
 ## Files Modified
 
-- `driver/snd-quantum2626.c`: Complete implementation of prepare, trigger, pointer, and IRQ handler with hardware register access
+- `driver/snd-quantum.c`: Complete implementation of prepare, trigger, pointer, and IRQ handler with hardware register access
 
 ## References
 

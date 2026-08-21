@@ -1,4 +1,4 @@
-# PreSonus Quantum 2626 Linux driver
+# PreSonus Quantum Thunderbolt Family Linux driver
 
 This directory contains an experimental out-of-tree ALSA PCI driver for the
 locally verified PreSonus Quantum 2626 PCI function, `1c67:0104`.
@@ -93,7 +93,7 @@ make -C /lib/modules/$(uname -r)/build M=$PWD W=1 modules
 
 ```bash
 sudo make install
-sudo modprobe snd-quantum2626
+sudo modprobe snd-quantum
 ```
 
 The narrower `install-module` and `install-ucm` targets are available for

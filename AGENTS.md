@@ -1,7 +1,7 @@
 # PreSonus Quantum Linux Agent Router
 
-PreSonus Quantum Linux is an experimental Linux audio support project aiming to cover the full
-PreSonus Quantum family. Its current out-of-tree ALSA PCI driver is enabled and hardware-tested
+PreSonus Quantum Linux is an experimental Linux audio support project aiming to cover the
+PreSonus Quantum Thunderbolt Family. Its current out-of-tree ALSA PCI driver is enabled and hardware-tested
 only for the Quantum 2626 Thunderbolt interface. This file is the small, always-loaded router;
 durable guidance lives under `docs/agents/`.
 
@@ -21,7 +21,7 @@ durable guidance lives under `docs/agents/`.
 - Treat repository evidence as authoritative. Distinguish confirmed hardware observations, static
   reverse-engineering findings, hypotheses, and stale documentation.
 - Read `notes/CURRENT_STATUS.md` before relying on older summaries in `README.md` or
-  `driver/README.md`; verify important claims against `driver/snd-quantum2626.c`.
+  `driver/README.md`; verify important claims against `driver/snd-quantum.c`.
 - Never add proprietary driver binaries, large traces, credentials, host identifiers, or generated
   Ghidra/build state. Respect `.gitignore` and keep temporary captures outside the repository unless
   the user asks to preserve a sanitized result.

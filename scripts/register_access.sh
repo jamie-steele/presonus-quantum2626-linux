@@ -8,13 +8,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Check if driver is loaded
-if ! lsmod | grep -q snd_quantum2626; then
+if ! lsmod | grep -q snd_quantum; then
     echo "ERROR: Driver not loaded. Load it first:" >&2
-    echo "  cd $REPO_ROOT/driver && make && sudo insmod snd-quantum2626.ko" >&2
+    echo "  cd $REPO_ROOT/driver && make && sudo insmod snd-quantum.ko" >&2
     exit 1
 fi
 
-MODULE="snd_quantum2626"
+MODULE="snd_quantum"
 PARAM_DIR="/sys/module/$MODULE/parameters"
 
 # Function to read register
@@ -119,7 +119,7 @@ case "${1:-help}" in
         scan_regs $START $END
         ;;
     help|*)
-        echo "Quantum 2626 Register Access Tool" >&2
+        echo "Quantum Register Access Tool" >&2
         echo "" >&2
         echo "Usage: $0 <command> [args...]" >&2
         echo "" >&2

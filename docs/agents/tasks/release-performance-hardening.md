@@ -88,7 +88,7 @@ the proven fixed 48 kHz transport.
 ## Relevant Context
 
 - `notes/CURRENT_STATUS.md` owns current hardware and runtime evidence.
-- `driver/snd-quantum2626.c` owns the fixed PCM constraints and shared audio-engine lifecycle.
+- `driver/snd-quantum.c` owns the fixed PCM constraints and shared audio-engine lifecycle.
 - `alsa/ucm2/P2626/HiFi.conf` contains the second candidate: both shared directions
   retain 128-frame periods and request exactly four periods through alsa-lib's direct-plugin
   `periods` field. The installed UCM now matches these bytes; actual hardware geometry remains

@@ -1,4 +1,4 @@
--- Keep the proven 128-frame Quantum 2626 hardware period while providing
+-- Keep the proven 128-frame Quantum hardware period while providing
 -- four periods of buffering for the shared UCM playback nodes. Retain one
 -- two periods of playback headroom for the dshare pointer-timing path.
 table.insert(alsa_monitor.rules, {
@@ -7,7 +7,7 @@ table.insert(alsa_monitor.rules, {
       {
         "node.name",
         "matches",
-        "alsa_output.*.HiFi__quantum2626_stereo_out_*",
+        "alsa_output.*.HiFi__quantum_stereo_out_*",
       },
     },
   },
@@ -26,7 +26,7 @@ table.insert(alsa_monitor.rules, {
       {
         "node.name",
         "matches",
-        "alsa_input.*.HiFi__quantum2626_mono_in_*",
+        "alsa_input.*.HiFi__quantum_mono_in_*",
       },
     },
   },
